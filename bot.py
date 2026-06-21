@@ -2,7 +2,7 @@ import os
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import anthropic
+from openai import OpenAI
 
 # =============================
 # НАСТРОЙКИ САЛОНА — МЕНЯЙ ТУТ
@@ -46,21 +46,22 @@ SYSTEM_PROMPT = f"""Ты — AI-администратор салона крас
 
 # =============================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Хранение истории диалогов
 conversation_history = {}
 
-anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+client = OpenAI(
+    api_key=GROQ_API_KEY,
+    base_url="https://api.groq.com/openai/v1"
+)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     conversation_history[user_id] = []
-    
     await update.message.reply_text(
         "👋 Привет! Я AI-администратор салона красоты.\n\n"
         "Помогу записаться на любую услугу или отвечу на вопросы.\n\n"
@@ -72,37 +73,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_message = update.message.text
 
-    # Инициализация истории если нет
     if user_id not in conversation_history:
         conversation_history[user_id] = []
 
-    # Добавляем сообщение пользователя
     conversation_history[user_id].append({
         "role": "user",
         "content": user_message
     })
 
-    # Ограничиваем историю последними 20 сообщениями
     if len(conversation_history[user_id]) > 20:
         conversation_history[user_id] = conversation_history[user_id][-20:]
 
-    # Показываем что бот печатает
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action="typing"
     )
 
     try:
-        response = anthropic_client.messages.create(
-            model="claude-sonnet-4-6",
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *conversation_history[user_id]
+            ],
             max_tokens=1000,
-            system=SYSTEM_PROMPT,
-            messages=conversation_history[user_id]
         )
 
-        reply = response.content[0].text
+        reply = response.choices[0].message.content
 
-        # Добавляем ответ в историю
         conversation_history[user_id].append({
             "role": "assistant",
             "content": reply
@@ -125,11 +123,9 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
     logger.info("Бот запущен!")
     app.run_polling(drop_pending_updates=True)
 
