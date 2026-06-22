@@ -183,7 +183,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                          f"{reply}"
                 )
                 # Планируем напоминание через 23 часа (за час до визита на следующий день)
-                booking_info = {"name": "клиент", "service": "услуга", "user_id": user_id}
+                booking_info = {"details": reply, "user_id": user_id, "time": datetime.now().strftime("%H:%M")}
                 if user_id not in bookings:
                     bookings[user_id] = []
                 bookings[user_id].append(booking_info)
@@ -255,9 +255,11 @@ async def today_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📅 Записей на сегодня нет.")
         return
     text = "📅 Записи на сегодня:\n\n"
+    count = 1
     for uid, user_bookings in bookings.items():
         for b in user_bookings:
-            text += f"👤 {b.get('name', 'Клиент')}\n"
+            text += f"{count}. 🕐 {b.get('time', '')}\n{b.get('details', '')}\n\n"
+            count += 1
     await update.message.reply_text(text)
 
 
