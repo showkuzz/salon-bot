@@ -183,7 +183,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                          f"{reply}"
                 )
                 # Планируем напоминание через 23 часа (за час до визита на следующий день)
-                booking_info = {"details": reply, "user_id": user_id, "time": datetime.now().strftime("%H:%M")}
+                # Определяем день записи
+day_tag = "tomorrow" if "завтра" in reply.lower() else "today"
+booking_info = {"details": reply, "user_id": user_id, "time": datetime.now().strftime("%H:%M"), "day": day_tag}
                 if user_id not in bookings:
                     bookings[user_id] = []
                 bookings[user_id].append(booking_info)
@@ -263,6 +265,26 @@ async def today_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+async def tomorrow_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для владельца — список записей на завтра"""
+    user_id = update.effective_user.id
+    if str(user_id) != str(OWNER_CHAT_ID):
+        return
+    tomorrow_bookings_list = {uid: b_list for uid, b_list in bookings.items() 
+                               if any(d.get('day') == 'tomorrow' for d in b_list)}
+    if not tomorrow_bookings_list:
+        await update.message.reply_text("📅 Записей на завтра нет.")
+        return
+    text = "📅 Записи на завтра:\n\n"
+    count = 1
+    for uid, user_bookings in tomorrow_bookings_list.items():
+        for b in user_bookings:
+            if b.get('day') == 'tomorrow':
+                text += f"{count}. 🕐 {b.get('time', '')}\n{b.get('details', '')}\n\n"
+                count += 1
+    await update.message.reply_text(text)
+
+
 async def blacklist_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для владельца — добавить в чёрный список"""
     user_id = update.effective_user.id
@@ -287,6 +309,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(CommandHandler("today", today_bookings))
+    app.add_handler(CommandHandler("tomorrow", tomorrow_bookings))
     app.add_handler(CommandHandler("ban", blacklist_user))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("Бот запущен!")
